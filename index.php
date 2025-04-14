@@ -101,11 +101,37 @@
     <h1 style="text-align: center; color: #1e90ff; margin-bottom: 20px;">Country Features Search</h1>
     <div class="container">
         <div class="search-container">
-            <div style="margin-bottom: 10px;">
-                <input type="text" id="searchInput" class="search-box" placeholder="Search by country or features ...">
+                <div style="display: flex; gap: 10px; margin: 10px 0;">
+                    <select id="listSelect" class="search-box" style="margin: 0;">
+                        <option value="">Select a country...</option>
+                        <?php foreach ($data['lists'] as $list): ?>
+                            <option value="<?php echo htmlspecialchars($list['name']); ?>"><?php echo htmlspecialchars($list['name']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <select id="sublistSelect" class="search-box" style="margin: 0;">
+                        <option value="">Select a feature...</option>
+                        <?php 
+                        $allSublists = [];
+                        foreach ($data['lists'] as $list) {
+                            $allSublists = array_merge($allSublists, $list['sublists']);
+                        }
+                        $uniqueSublists = array_unique($allSublists);
+                        sort($uniqueSublists);
+                        foreach ($uniqueSublists as $sublist): 
+                        ?>
+                            <option value="<?php echo htmlspecialchars($sublist); ?>"><?php echo htmlspecialchars($sublist); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div style="text-align: center; margin: 10px 0; font-weight: bold; color: #1e90ff;">
+                    OR
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <input type="text" id="searchInput" class="search-box" placeholder="Enter country or product ...">
+                </div>
             </div>
-            <div id="dropdownResults" class="dropdown-results results"></div>
-        </div>
+                <div id="dropdownResults" class="dropdown-results results"></div>
+            </div>
         <div id="mainResults" class="main-results" style="margin-top: 20px;"></div>
     </div>
 
@@ -114,24 +140,122 @@
         const data = <?php echo json_encode($data); ?>;
 
         const searchInput = document.getElementById('searchInput');
+        const listSelect = document.getElementById('listSelect');
+        const sublistSelect = document.getElementById('sublistSelect');
         const dropdownResults = document.getElementById('dropdownResults');
         const mainResults = document.getElementById('mainResults');
 
-        function updateResults(content, showDropdown = true) {
-            if (showDropdown) {
-                dropdownResults.innerHTML = content;
-                dropdownResults.style.display = 'block';
+        function checkCombinedSelection() {
+            const selectedCountry = listSelect.value;
+            const selectedFeature = sublistSelect.value;
+            
+            if (selectedCountry && selectedFeature) {
+                const selectedList = data.lists.find(list => list.name === selectedCountry);
+                const hasFeature = selectedList && selectedList.sublists.includes(selectedFeature);
+                
+                const results = [
+                    `<div class="list-item" style="font-weight: bold">Filtered Search:</div>`,
+                    `<div class="list-item">Country: ${selectedCountry}</div>`,
+                    `<div class="list-item">Feature: ${selectedFeature}</div>`,
+                    `<div class="list-item" style="color: ${hasFeature ? 'green' : 'red'}; font-weight: bold">
+                        ${hasFeature ? 'YES' : 'NO'}
+                    </div>`
+                ];
+                mainResults.innerHTML = results.join('');
+                mainResults.style.display = 'block';
+            }
+        }
+
+        // Handle list selection
+        listSelect.addEventListener('change', function(e) {
+            const selectedFeature = sublistSelect.value;
+            if (selectedFeature) {
+                checkCombinedSelection();
+                return;
+            }
+
+            const selectedList = data.lists.find(list => list.name === e.target.value);
+            if (selectedList) {
+                const results = [
+                    `<div class="list-item" style="font-weight: bold">Features in "${selectedList.name}":</div>`,
+                    ...selectedList.sublists.map(subitem => 
+                        `<div class="list-item" data-type="sublist">${subitem}</div>`
+                    )
+                ];
+                mainResults.innerHTML = results.join('');
+                mainResults.style.display = 'block';
+            }
+        });
+
+        // Handle sublist selection
+        sublistSelect.addEventListener('change', function(e) {
+            const selectedCountry = listSelect.value;
+            if (selectedCountry) {
+                checkCombinedSelection();
+                return;
+            }
+
+            const selectedSublist = e.target.value;
+            if (selectedSublist) {
+                const parentLists = data.lists.filter(list => list.sublists.includes(selectedSublist));
+                const results = [
+                    `<div class="list-item" style="font-weight: bold">${selectedSublist} available in:</div>`,
+                    ...parentLists.map(list => `<div class="list-item" data-type="list">${list.name}</div>`)
+                ];
+                mainResults.innerHTML = results.join('');
+                mainResults.style.display = 'block';
+            }
+        });
+
+        function updateResults(content, container) {
+            if (container) {
+                container.innerHTML = content;
+                container.style.display = 'block';
             }
             mainResults.innerHTML = content;
             mainResults.style.display = 'block';
         }
 
+        // Populate dropdowns on page load
+        function populateDropdowns() {
+            // Clear existing options
+            listSelect.innerHTML = '<option value="">Select a country...</option>';
+            sublistSelect.innerHTML = '<option value="">Select a feature...</option>';
+            
+            // Populate countries dropdown
+            data.lists.forEach(list => {
+                const option = document.createElement('option');
+                option.value = list.name;
+                option.textContent = list.name;
+                listSelect.appendChild(option);
+            });
+            
+            // Populate features dropdown
+            const allFeatures = new Set();
+            data.lists.forEach(list => {
+                list.sublists.forEach(feature => allFeatures.add(feature));
+            });
+            
+            Array.from(allFeatures).sort().forEach(feature => {
+                const option = document.createElement('option');
+                option.value = feature;
+                option.textContent = feature;
+                sublistSelect.appendChild(option);
+            });
+        }
+
+        // Call populate function on load
+        populateDropdowns();
+
         searchInput.addEventListener('input', function(e) {
             const searchTerm = e.target.value.toLowerCase();
             let results = [];
 
+            // Reset dropdown values
+            listSelect.value = '';
+            sublistSelect.value = '';
+
             if (searchTerm === '') {
-                dropdownResults.style.display = 'none';
                 mainResults.style.display = 'none';
                 return;
             }
@@ -149,10 +273,6 @@
                 list.sublists.forEach(subitem => {
                     if (subitem.toLowerCase().includes(searchTerm) && !foundItems.has(subitem)) {
                         foundItems.add(subitem);
-                        const parentLists = data.lists
-                            .filter(l => l.sublists.includes(subitem))
-                            .map(l => l.name)
-                            .join(', ');
                         const highlightedText = subitem.replace(new RegExp(searchTerm, 'gi'), match => `<span class="highlight">${match}</span>`);
                         results.push(`<div class="list-item" data-type="sublist">${highlightedText}</div>`);
                     }
@@ -160,13 +280,11 @@
             });
 
             if (results.length > 0) {
-                dropdownResults.innerHTML = results.join('');
-                dropdownResults.style.display = 'block';
                 mainResults.innerHTML = results.join('');
                 mainResults.style.display = 'block';
             } else {
-                dropdownResults.style.display = 'none';
-                mainResults.innerHTML = 'No results found';
+                mainResults.innerHTML = '<div class="list-item">No results found</div>';
+                mainResults.style.display = 'block';
             }
         });
 
